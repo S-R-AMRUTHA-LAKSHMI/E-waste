@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 const bodyParser = require('body-parser');
 const cors = require('cors');
 const bcrypt = require('bcryptjs');
+const axios = require('axios');
 
 const app = express();
 
@@ -22,22 +23,7 @@ db.once('open', () => {
     console.log('Connected to MongoDB');
 });
 
-// User schema and model
-const userSchema = new mongoose.Schema({
-    name: { type: String, required: true },
-    email: {
-        type: String,
-        required: true,
-        unique: true,
-        lowercase: true,
-        trim: true
-    },
-    password: { type: String, required: true },
-});
-
-const User = mongoose.model('User', userSchema);
-
-// Request schema and model
+// Modified Request schema to include prediction data
 const requestSchema = new mongoose.Schema({
     customerName: { type: String, required: true },
     phone: { type: String, required: true },
@@ -58,10 +44,24 @@ const requestSchema = new mongoose.Schema({
     amount: { type: String, default: '' },
     isPaid: { type: Boolean, default: false },
     isCollected: { type: Boolean, default: false },
-    verificationResponses: {
-        type: Map,
-        of: String,
-        default: {}
+    predictionData: {
+        itemType: String,
+        brand: String,
+        age: Number,
+        condition: String,
+        weight: Number,
+        materialComposition: String,
+        batteryIncluded: String,
+        visibleDamage: String,
+        screenCondition: String,
+        rustPresence: String,
+        wiringCondition: String,
+        resalePotential: String
+    },
+    predictionResult: {
+        scrapPrice: Number,
+        repairCost: Number,
+        finalAmount: Number
     },
     report: {
         reportId: String,
@@ -74,11 +74,11 @@ const requestSchema = new mongoose.Schema({
             pickupTime: String
         },
         itemDetails: String,
-        responses: {
-            type: Map,
-            of: String
+        predictionDetails: {
+            scrapPrice: Number,
+            repairCost: Number,
+            finalAmount: Number
         },
-        amount: String,
         paymentStatus: String,
         collectionStatus: String
     }
@@ -86,7 +86,22 @@ const requestSchema = new mongoose.Schema({
 
 const Request = mongoose.model('Request', requestSchema);
 
-// Existing Auth Routes
+// User schema remains the same
+const userSchema = new mongoose.Schema({
+    name: { type: String, required: true },
+    email: {
+        type: String,
+        required: true,
+        unique: true,
+        lowercase: true,
+        trim: true
+    },
+    password: { type: String, required: true },
+});
+
+const User = mongoose.model('User', userSchema);
+
+// Existing auth routes remain the same
 app.post('/signup', async (req, res) => {
     const { name, email, password } = req.body;
 
@@ -113,7 +128,6 @@ app.post('/signup', async (req, res) => {
     }
 });
 
-// In server.js, modify the login route
 app.post('/login', async (req, res) => {
     const { email, password } = req.body;
 
@@ -134,7 +148,7 @@ app.post('/login', async (req, res) => {
             success: true,
             message: 'Login successful',
             user: {
-                id: user._id.toString(), // Ensure ID is converted to string
+                id: user._id.toString(),
                 name: user.name,
                 email: user.email
             }
@@ -145,7 +159,7 @@ app.post('/login', async (req, res) => {
     }
 });
 
-// In server.js, modify the requests route
+// Modified requests routes
 app.get('/api/requests/:userId', async (req, res) => {
     try {
         if (!req.params.userId) {
@@ -159,17 +173,49 @@ app.get('/api/requests/:userId', async (req, res) => {
         res.status(500).json({ message: 'Error fetching requests' });
     }
 });
+
+// New prediction endpoint that proxies to Python server
+app.post('/api/predict', async (req, res) => {
+    try {
+        const response = await axios.post('http://localhost:5001/predict', req.body);
+        res.json(response.data);
+    } catch (error) {
+        console.error('Prediction Error:', error);
+        res.status(500).json({ 
+            message: 'Error getting prediction',
+            error: error.response?.data || error.message 
+        });
+    }
+});
+
+// Modified update endpoint
 app.put('/api/requests/:requestId', async (req, res) => {
     try {
         const {
             amount,
             isPaid,
             isCollected,
-            verificationResponses,
-            report
+            predictionData,
+            predictionResult
         } = req.body;
 
         const status = isPaid && isCollected ? 'completed' : 'verified';
+
+        const report = {
+            reportId: `REP-${req.params.requestId}-${Date.now()}`,
+            verificationDate: new Date(),
+            customerDetails: {
+                name: req.body.customerName,
+                phone: req.body.phone,
+                address: req.body.address,
+                pickupDate: req.body.pickupDate,
+                pickupTime: req.body.pickupTime
+            },
+            itemDetails: req.body.itemDetails,
+            predictionDetails: predictionResult,
+            paymentStatus: isPaid ? 'Paid' : 'Pending',
+            collectionStatus: isCollected ? 'Collected' : 'Pending'
+        };
 
         const updatedRequest = await Request.findByIdAndUpdate(
             req.params.requestId,
@@ -177,7 +223,8 @@ app.put('/api/requests/:requestId', async (req, res) => {
                 amount,
                 isPaid,
                 isCollected,
-                verificationResponses,
+                predictionData,
+                predictionResult,
                 report,
                 status
             },
@@ -191,7 +238,6 @@ app.put('/api/requests/:requestId', async (req, res) => {
     }
 });
 
-// Route to create test requests (for development)
 app.post('/api/requests', async (req, res) => {
     try {
         const newRequest = new Request(req.body);

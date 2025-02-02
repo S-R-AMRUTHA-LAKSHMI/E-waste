@@ -1,51 +1,54 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
+//import "./HomeComponent.css";
 
 const VerificationDetails = ({ request, onBack, onUpdateStatus }) => {
     const [isEditing, setIsEditing] = useState(false);
+    const [predictionData, setPredictionData] = useState({
+        itemType: '',
+        brand: '',
+        age: '',
+        condition: '',
+        weight: '',
+        materialComposition: '',
+        batteryIncluded: '',
+        visibleDamage: '',
+        screenCondition: '',
+        rustPresence: '',
+        wiringCondition: '',
+        resalePotential: ''
+    });
     const [amount, setAmount] = useState(request.amount || '');
     const [isPaid, setIsPaid] = useState(request.isPaid || false);
     const [isCollected, setIsCollected] = useState(request.isCollected || false);
-    const [verificationResponses, setVerificationResponses] = useState(
-        request.verificationResponses || {}
-    );
-    const [report, setReport] = useState(request.report || null);
+    const [loading, setLoading] = useState(false);
+    const [predictionResult, setPredictionResult] = useState(null);
 
-    const verificationQuestions = [
-        "Is the e-waste item matching the description provided?",
-        "What is the condition of the e-waste?",
-        "Are there any visible damages?",
-        "Is the item complete with all parts?",
-        "Does it contain any hazardous materials?",
-        "Approximate weight of the item"
-    ];
-
-    const handleVerificationChange = (question, answer) => {
-        setVerificationResponses(prev => ({
+    const handlePredictionChange = (field, value) => {
+        setPredictionData(prev => ({
             ...prev,
-            [question]: answer
+            [field]: value
         }));
     };
 
-    const generateReport = () => {
-        const newReport = {
-            reportId: `REP-${request._id}-${Date.now()}`,
-            verificationDate: new Date().toISOString(),
-            customerDetails: {
-                name: request.customerName,
-                phone: request.phone,
-                address: request.address,
-                pickupDate: request.pickupDate,
-                pickupTime: request.pickupTime
-            },
-            itemDetails: request.itemDetails,
-            responses: verificationResponses,
-            amount: amount,
-            paymentStatus: isPaid ? 'Paid' : 'Pending',
-            collectionStatus: isCollected ? 'Collected' : 'Pending'
-        };
-        setReport(newReport);
+    const getPrediction = async () => {
+        setLoading(true);
+        try {
+            const response = await fetch('http://localhost:5000/api/predict', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(predictionData),
+            });
+            const data = await response.json();
+            setPredictionResult(data);
+            setAmount(data.finalAmount.toFixed(2));
+        } catch (error) {
+            console.error('Prediction error:', error);
+        }
+        setLoading(false);
     };
 
     const handleStatusUpdate = async () => {
@@ -53,166 +56,355 @@ const VerificationDetails = ({ request, onBack, onUpdateStatus }) => {
             amount,
             isPaid,
             isCollected,
-            verificationResponses,
-            report
+            predictionData,
+            predictionResult
         };
         await onUpdateStatus(request._id, updates);
         setIsEditing(false);
     };
 
     const renderCustomerDetails = () => (
-        <div className="bg-white shadow rounded-lg p-6 mb-6">
-            <h2 className="text-2xl font-bold mb-4">Customer Details</h2>
+        <div className="bg-white rounded-lg shadow p-6 mb-6">
+            <h2 className="text-xl font-bold mb-4">Customer Details</h2>
             <div className="grid grid-cols-2 gap-4">
-                <p><span className="font-medium">Name:</span> {request.customerName}</p>
-                <p><span className="font-medium">Phone:</span> {request.phone}</p>
-                <p><span className="font-medium">Address:</span> {request.address}</p>
-                <p><span className="font-medium">Pickup:</span> {request.pickupDate} at {request.pickupTime}</p>
-                <p><span className="font-medium">Item:</span> {request.itemDetails}</p>
-            </div>
-        </div>
-    );
-
-    const renderVerificationQuestions = () => (
-        <div className="bg-white shadow rounded-lg p-6 mb-6">
-            <h2 className="text-2xl font-bold mb-4">Verification Questions</h2>
-            {verificationQuestions.map((question, index) => (
-                <div key={index} className="mb-4">
-                    <label className="block mb-2">{question}</label>
-                    <input
-                        type="text"
-                        className="w-full p-2 border rounded"
-                        onChange={(e) => handleVerificationChange(question, e.target.value)}
-                        value={verificationResponses[question] || ''}
-                    />
+                <div>
+                    <p className="font-semibold">Name:</p>
+                    <p>{request.customerName}</p>
                 </div>
-            ))}
-            <button
-                onClick={generateReport}
-                className="w-full py-2 px-4 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 mb-4"
-            >
-                Generate Report
-            </button>
+                <div>
+                    <p className="font-semibold">Phone:</p>
+                    <p>{request.phone}</p>
+                </div>
+                <div>
+                    <p className="font-semibold">Address:</p>
+                    <p>{request.address}</p>
+                </div>
+                <div>
+                    <p className="font-semibold">Pickup Details:</p>
+                    <p>{request.pickupDate} at {request.pickupTime}</p>
+                </div>
+                <div className="col-span-2">
+                    <p className="font-semibold">Item Details:</p>
+                    <p>{request.itemDetails}</p>
+                </div>
+            </div>
         </div>
     );
 
     const renderReport = () => (
-        <div className="bg-white shadow rounded-lg p-6 mb-6">
-            <div className="flex justify-between items-center mb-4">
-                <h2 className="text-2xl font-bold">Generated Report</h2>
-                {request.status === 'completed' && !isEditing && (
-                    <button
-                        onClick={() => setIsEditing(true)}
-                        className="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700"
-                    >
-                        Edit Details
-                    </button>
-                )}
-            </div>
+        <div className="bg-white rounded-lg shadow p-6 mb-6">
+            <h2 className="text-xl font-bold mb-4">Verification Report</h2>
             <div className="space-y-4">
-                <p><span className="font-medium">Report ID:</span> {report.reportId}</p>
-                <p><span className="font-medium">Verification Date:</span> {new Date(report.verificationDate).toLocaleString()}</p>
-                
-                <h3 className="font-semibold mt-4">Verification Responses:</h3>
-                {Object.entries(report.responses).map(([question, answer], index) => (
-                    <div key={index} className="ml-4">
-                        <p className="font-medium">{question}</p>
-                        <p className="text-gray-600">{answer}</p>
-                    </div>
-                ))}
+                <div>
+                    <p className="font-semibold">Report ID:</p>
+                    <p>{request.report?.reportId}</p>
+                </div>
+                <div>
+                    <p className="font-semibold">Verification Date:</p>
+                    <p>{new Date(request.report?.verificationDate).toLocaleDateString()}</p>
+                </div>
+                <div>
+                    <p className="font-semibold">Final Amount:</p>
+                    <p>₹{request.report?.predictionDetails?.finalAmount?.toFixed(2)}</p>
+                </div>
+                <div>
+                    <p className="font-semibold">Status:</p>
+                    <p>Payment: {request.report?.paymentStatus}</p>
+                    <p>Collection: {request.report?.collectionStatus}</p>
+                </div>
             </div>
         </div>
     );
 
-    const renderPaymentCollection = (isEditMode) => (
-        <div className="bg-white shadow rounded-lg p-6 mb-6">
-            <h2 className="text-2xl font-bold mb-4">Payment and Collection</h2>
-            {isEditMode ? (
-                <div className="space-y-4">
-                    <div>
-                        <label className="block mb-2">Amount (in currency)</label>
-                        <input
-                            type="number"
-                            className="w-full p-2 border rounded"
-                            value={amount}
-                            onChange={(e) => setAmount(e.target.value)}
-                            placeholder="Enter amount"
-                        />
-                    </div>
-
-                    <div className="flex items-center space-x-4">
-                        <label className="flex items-center">
+    const renderPaymentCollection = (isEditable) => (
+        <div className="bg-white rounded-lg shadow p-6 mb-6">
+            <h2 className="text-xl font-bold mb-4">Payment & Collection Status</h2>
+            <div className="space-y-4">
+                <div>
+                    <p className="font-semibold">Amount:</p>
+                    <p>₹{amount}</p>
+                </div>
+                {isEditable ? (
+                    <>
+                        <div className="flex items-center space-x-2">
                             <input
                                 type="checkbox"
-                                className="mr-2"
                                 checked={isPaid}
                                 onChange={(e) => setIsPaid(e.target.checked)}
+                                className="h-4 w-4 text-indigo-600"
                             />
-                            Payment Provided
-                        </label>
-
-                        <label className="flex items-center">
+                            <label>Payment Received</label>
+                        </div>
+                        <div className="flex items-center space-x-2">
                             <input
                                 type="checkbox"
-                                className="mr-2"
                                 checked={isCollected}
                                 onChange={(e) => setIsCollected(e.target.checked)}
+                                className="h-4 w-4 text-indigo-600"
                             />
-                            E-Waste Collected
-                        </label>
-                    </div>
-
-                    <button
-                        onClick={handleStatusUpdate}
-                        className="w-full py-2 px-4 bg-green-600 text-white rounded-md hover:bg-green-700"
-                    >
-                        Update Details
-                    </button>
-                </div>
-            ) : (
-                <div className="space-y-4">
-                    <p><span className="font-medium">Amount:</span> ${amount}</p>
-                    <p><span className="font-medium">Payment Status:</span> {isPaid ? 'Paid' : 'Pending'}</p>
-                    <p><span className="font-medium">Collection Status:</span> {isCollected ? 'Collected' : 'Pending'}</p>
-                </div>
-            )}
-        </div>
-    );
-
-    return (
-        <div className="max-w-4xl mx-auto py-6">
-            <div className="mb-4 flex justify-between items-center">
-                <button
-                    onClick={onBack}
-                    className="text-indigo-600 hover:text-indigo-800"
-                >
-                    ← Back to Home
-                </button>
-            </div>
-
-            {renderCustomerDetails()}
-            
-            {request.status === 'completed' ? (
-                isEditing ? (
-                    <>
-                        {renderVerificationQuestions()}
-                        {renderPaymentCollection(true)}
+                            <label>Item Collected</label>
+                        </div>
+                        <button
+                            onClick={handleStatusUpdate}
+                            className="w-full py-2 px-4 bg-indigo-600 text-white rounded-md hover:bg-indigo-700"
+                        >
+                            Update Status
+                        </button>
                     </>
                 ) : (
                     <>
-                        {report && renderReport()}
-                        {renderPaymentCollection(false)}
+                        <p>Payment Status: {isPaid ? 'Paid' : 'Pending'}</p>
+                        <p>Collection Status: {isCollected ? 'Collected' : 'Pending'}</p>
+                        <button
+                            onClick={() => setIsEditing(true)}
+                            className="w-full py-2 px-4 bg-indigo-600 text-white rounded-md hover:bg-indigo-700"
+                        >
+                            Edit Status
+                        </button>
                     </>
-                )
-            ) : (
-                <>
-                    {renderVerificationQuestions()}
-                    {renderPaymentCollection(true)}
-                </>
-            )}
+                )}
+            </div>
+        </div>
+    );
+
+    const renderPredictionForm = () => {
+        const getBrandOptions = (itemType) => {
+            switch (itemType) {
+                case 'Laptop':
+                    return ['Dell', 'HP', 'Lenovo', 'Apple', 'Acer'];
+                case 'Mobile':
+                    return ['Samsung', 'Apple', 'OnePlus', 'Vivo', 'Oppo'];
+                case 'TV':
+                    return ['Sony', 'LG', 'Samsung', 'Panasonic'];
+                case 'Refrigerator':
+                    return ['LG', 'Samsung', 'Whirlpool', 'Godrej'];
+                case 'Washing Machine':
+                    return ['IFB', 'Bosch', 'LG', 'Samsung'];
+                case 'Microwave':
+                    return ['Samsung', 'LG', 'Panasonic'];
+                case 'Printer':
+                    return ['HP', 'Epson', 'Canon'];
+                case 'AC':
+                    return ['Voltas', 'LG', 'Hitachi', 'Daikin'];
+                default:
+                    return [];
+            }
+        };
+    
+        return (
+            <div className="bg-white rounded-lg shadow p-6 mb-6">
+                <h2 className="text-xl font-bold mb-4">E-Waste Assessment</h2>
+                <div className="grid grid-cols-2 gap-4">
+                    <div>
+                        <label className="block mb-2">Item Type</label>
+                        <select
+                            className="w-full p-2 border rounded"
+                            value={predictionData.itemType}
+                            onChange={(e) => {
+                                handlePredictionChange('itemType', e.target.value);
+                                handlePredictionChange('brand', ''); // Reset brand when item type changes
+                            }}
+                        >
+                            <option value="">Select Item Type</option>
+                            {['Laptop', 'Mobile', 'TV', 'Refrigerator', 'Washing Machine', 'Microwave', 'Printer', 'AC']
+                                .map(type => (
+                                    <option key={type} value={type}>{type}</option>
+                                ))}
+                        </select>
+                    </div>
+    
+                    <div>
+                        <label className="block mb-2">Brand</label>
+                        <select
+                            className="w-full p-2 border rounded"
+                            value={predictionData.brand}
+                            onChange={(e) => handlePredictionChange('brand', e.target.value)}
+                            disabled={!predictionData.itemType}
+                        >
+                            <option value="">Select Brand</option>
+                            {getBrandOptions(predictionData.itemType).map(brand => (
+                                <option key={brand} value={brand}>{brand}</option>
+                            ))}
+                        </select>
+                    </div>
+    
+                    <div>
+                        <label className="block mb-2">Age (Years)</label>
+                        <input
+                            type="number"
+                            min="1"
+                            max="15"
+                            className="w-full p-2 border rounded"
+                            value={predictionData.age}
+                            onChange={(e) => handlePredictionChange('age', e.target.value)}
+                        />
+                    </div>
+    
+                    <div>
+                        <label className="block mb-2">Condition</label>
+                        <select
+                            className="w-full p-2 border rounded"
+                            value={predictionData.condition}
+                            onChange={(e) => handlePredictionChange('condition', e.target.value)}
+                        >
+                            <option value="">Select Condition</option>
+                            <option value="Working">Working (Fully functional)</option>
+                            <option value="Partially Working">Partially Working (Some issues, repairable)</option>
+                            <option value="Non-Working">Non-Working (Not working but repairable)</option>
+                            <option value="Scrap">Scrap (Only useful for materials)</option>
+                        </select>
+                    </div>
+    
+                    <div>
+                        <label className="block mb-2">Weight (kg)</label>
+                        <input
+                            type="number"
+                            step="0.1"
+                            min="0.5"
+                            max="60"
+                            className="w-full p-2 border rounded"
+                            value={predictionData.weight}
+                            onChange={(e) => handlePredictionChange('weight', e.target.value)}
+                        />
+                    </div>
+    
+                    <div>
+                        <label className="block mb-2">Material Composition</label>
+                        <select
+                            className="w-full p-2 border rounded"
+                            value={predictionData.materialComposition}
+                            onChange={(e) => handlePredictionChange('materialComposition', e.target.value)}
+                        >
+                            <option value="">Select Material Composition</option>
+                            <option value="Plastic, Metal">Plastic, Metal</option>
+                            <option value="Glass, Plastic, Metal">Glass, Plastic, Metal</option>
+                            <option value="Metal, Plastic">Metal, Plastic</option>
+                            <option value="Plastic, Glass">Plastic, Glass</option>
+                            <option value="Plastic">Plastic</option>
+                        </select>
+                    </div>
+    
+                    <div>
+                        <label className="block mb-2">Battery Included</label>
+                        <select
+                            className="w-full p-2 border rounded"
+                            value={predictionData.batteryIncluded}
+                            onChange={(e) => handlePredictionChange('batteryIncluded', e.target.value)}
+                        >
+                            <option value="">Select Option</option>
+                            <option value="Yes">Yes</option>
+                            <option value="No">No</option>
+                        </select>
+                    </div>
+    
+                    <div>
+                        <label className="block mb-2">Visible Damage</label>
+                        <select
+                            className="w-full p-2 border rounded"
+                            value={predictionData.visibleDamage}
+                            onChange={(e) => handlePredictionChange('visibleDamage', e.target.value)}
+                        >
+                            <option value="">Select Option</option>
+                            <option value="Yes">Yes</option>
+                            <option value="No">No</option>
+                        </select>
+                    </div>
+    
+                    <div>
+                        <label className="block mb-2">Screen Condition</label>
+                        <select
+                            className="w-full p-2 border rounded"
+                            value={predictionData.screenCondition}
+                            onChange={(e) => handlePredictionChange('screenCondition', e.target.value)}
+                            disabled={!['Laptop', 'Mobile', 'TV'].includes(predictionData.itemType)}
+                        >
+                            <option value="">Select Screen Condition</option>
+                            <option value="No Damage">No Damage</option>
+                            <option value="Minor Scratches">Minor Scratches</option>
+                            <option value="Cracked">Cracked</option>
+                            <option value="Missing Parts">Missing Parts</option>
+                        </select>
+                    </div>
+    
+                    <div>
+                        <label className="block mb-2">Rust Presence</label>
+                        <select
+                            className="w-full p-2 border rounded"
+                            value={predictionData.rustPresence}
+                            onChange={(e) => handlePredictionChange('rustPresence', e.target.value)}
+                        >
+                            <option value="">Select Option</option>
+                            <option value="Yes">Yes</option>
+                            <option value="No">No</option>
+                        </select>
+                    </div>
+    
+                    <div>
+                        <label className="block mb-2">Wiring Condition</label>
+                        <select
+                            className="w-full p-2 border rounded"
+                            value={predictionData.wiringCondition}
+                            onChange={(e) => handlePredictionChange('wiringCondition', e.target.value)}
+                        >
+                            <option value="">Select Wiring Condition</option>
+                            <option value="Intact">Intact (No visible damage)</option>
+                            <option value="Slightly Worn">Slightly Worn</option>
+                            <option value="Damaged Wires">Damaged Wires</option>
+                        </select>
+                    </div>
+    
+                    <div>
+                        <label className="block mb-2">Resale Potential</label>
+                        <select
+                            className="w-full p-2 border rounded"
+                            value={predictionData.resalePotential}
+                            onChange={(e) => handlePredictionChange('resalePotential', e.target.value)}
+                        >
+                            <option value="">Select Resale Potential</option>
+                            <option value="High">High</option>
+                            <option value="Medium">Medium</option>
+                            <option value="Low">Low</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <button
+                    onClick={getPrediction}
+                    disabled={loading}
+                    className="w-full mt-6 py-2 px-4 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 disabled:bg-indigo-400"
+                >
+                    {loading ? 'Calculating...' : 'Calculate Price'}
+                </button>
+    
+                {predictionResult && (
+                    <div className="mt-4 p-4 bg-gray-50 rounded-md">
+                        <h3 className="font-bold mb-2">Assessment Results:</h3>
+                        <p>Scrap Price: ₹{predictionResult.scrapPrice.toFixed(2)}</p>
+                        <p>Repair Cost: ₹{predictionResult.repairCost.toFixed(2)}</p>
+                        <p className="font-bold">Final Amount: ₹{predictionResult.finalAmount.toFixed(2)}</p>
+                    </div>
+                )}
+            </div>
+        );
+    };
+    return (
+        <div className="container mx-auto px-4 py-8">
+            <button
+                onClick={onBack}
+                className="mb-6 px-4 py-2 bg-gray-200 rounded hover:bg-gray-300"
+            >
+                ← Back
+            </button>
+            {renderCustomerDetails()}
+            {renderPredictionForm()}
+            {renderPaymentCollection(isEditing)}
+            {request.report && renderReport()}
         </div>
     );
 };
+
+
+
 // Main Home Component
 const HomeComponent = () => {
     const [userData, setUserData] = useState(null);
